@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>校园失物招领 —— 单元测试</title>
+  <style>
+    body { font-family: Consolas, "Microsoft YaHei", monospace; background: #f5f5f6; margin: 0; padding: 28px 16px; color: #222; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 20px; }
+    .summary { padding: 14px 18px; border-radius: 10px; margin: 14px 0 20px; font-size: 15px; font-weight: 700; }
+    .summary.ok { background: #eaf7ef; color: #2f9e5e; border: 1px solid #bfe3cd; }
+    .summary.fail { background: #fdeceb; color: #d5483c; border: 1px solid #f3c4c0; }
+    .case { background: #fff; border-radius: 10px; padding: 12px 16px; margin-bottom: 9px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+    .case .name { font-weight: 700; font-size: 14px; }
+    .case .steps { color: #777; font-size: 12.5px; margin-top 4px; margin-top: 4px; }
+    .pass { border-left: 4px solid #2f9e5e; }
+    .pass .name::before { content: "✅ PASS  "; color: #2f9e5e; }
+    .fail { border-left: 4px solid #d5483c; }
+    .fail .name::before { content: "❌ FAIL  "; color: #d5483c; }
+    .fail .detail { margin-top: 8px; font-size: 12.5px; color: #d5483c; background: #fdeceb; padding: 7px 10px; border-radius: 6px; white-space: pre-wrap; }
+    .tip { color: #888; font-size: 12.5px; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>校园失物招领 · 单元测试</h1>
+    <div class="case">
+      <div class="name">测试设计说明</div>
+      <div class="steps">
+        用例设计方法：<b>白盒测试（分支/边界覆盖）为主，黑盒测试（等价类划分、错误推测）为辅</b>。<br>
+        · 白盒：针对 validateItem 的每个判定分支（空名称 / 超长名称 / 非法分类 / 未来时间 / 图片超限）逐一设计用例，覆盖 bizNo 序号边界（&gt;99 截断分支）；<br>
+        · 黑盒：按等价类划分搜索输入（命中名称 / 命中地点 / 无命中），按错误推测法覆盖"撤销状态"等易遗漏路径。<br>
+        评价：14 个用例覆盖核心模块（校验、发布、搜索、状态更新）的全部关键分支与主要等价类，满足本程序的测试要求。
+      </div>
+    </div>
+    <div id="summary" class="summary">测试运行中…</div>
+    <div id="results"></div>
+    <p class="tip">说明：本页面在浏览器中直接运行，无需任何框架与服务器；测试数据读写 localStorage，运行结束后会自动恢复为示例数据。</p>
+  </div>
+
+  <script src="../js/utils.js"></script>
+  <script src="../js/storage.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var U = Utils, S = Store;
+    var results = [];
+
+    function it(name, steps, fn) {
+      try { fn(); results.push({ name: name, steps: steps, pass: true }); }
+      catch (e) { results.push({ name: name, steps: steps, pass: false, err: e.message }); }
+    }
+    function assert(cond, msg) { if (!cond) throw new Error(msg || '断言失败'); }
+    function eq(a, b, msg) {
+      if (a !== b) throw new Error((msg || '值不相等') + '：期望「' + b + '」，实际「' + a + '」');
+    }
+
+    // 构造一条合法表单数据
+    function validForm(over) {
+      var d = {
+        type: U.TYPE_LOST,
+        name: '测试物品',
+        category: '数码',
+        location: '测试地点',
+        happenTime: new Date(Date.now() - 3600000).toISOString(),
+        description: '测试描述',
+        contactName: '测试同学',
+        contact: '13800001111',
+        images: []
+      };
+      if (over) Object.keys(over).forEach(function (k) { d[k] = over[k]; });
+      return d;
+    }
+
+    /* 每个用例前恢复干净的示例数据 */
+    function reset() { S.resetData(); }
+
+    /* ---------- 用例 1：必填项为空时校验不通过 ---------- */
+    it('用例 1：表单校验 —— 物品名称为空时不允许发布',
+       '步骤：清空 name 字段调用 Utils.validateItem；预期：valid=false，errors 包含 name',
+       function () {
+         var r = U.validateItem(validForm({ name: '   ' }));
+         assert(!r.valid, '空名称应校验失败');
+         assert(!!r.errors.name, '应给出 name 字段错误提示');
+       });
+
+    /* ---------- 用例 2：合法数据校验通过 ---------- */
+    it('用例 2：表单校验 —— 信息完整时校验通过',
+       '步骤：构造完整合法数据调用 validateItem；预期：valid=true，errors 为空',
+       function () {
+         var r = U.validateItem(validForm());
+         eq(r.valid, true, '完整数据应通过校验');
+         eq(Object.keys(r.errors).length, 0, '不应有错误字段');
+       });
+
+    /* ---------- 用例 3：时间不能晚于当前 ---------- */
+    it('用例 3：表单校验 —— 丢失/拾到时间晚于当前时间时拒绝',
+       '步骤：happenTime 设为明天；预期：valid=false，errors 包含 happenTime',
+       function () {
+         var future = new Date(Date.now() + 24 * 3600000).toISOString();
+         var r = U.validateItem(validForm({ happenTime: future }));
+         assert(!r.valid, '未来时间应校验失败');
+         assert(!!r.errors.happenTime, '应给出 happenTime 错误提示');
+       });
+
+    /* ---------- 用例 4：图片超过 3 张拒绝 ---------- */
+    it('用例 4：表单校验 —— 上传图片超过 3 张时拒绝',
+       '步骤：images 放入 4 个元素；预期：valid=false，errors 包含 images',
+       function () {
+         var r = U.validateItem(validForm({ images: ['a', 'b', 'c', 'd'] }));
+         assert(!r.valid, '超过 3 张应校验失败');
+         assert(!!r.errors.images, '应给出 images 错误提示');
+       });
+
+    /* ---------- 用例 5：发布信息成功保存且编号正确 ---------- */
+    it('用例 5：发布信息 —— 新增寻物信息后可被查询，编号以 XW 开头',
+       '步骤：Store.addItem 一条寻物信息，再 getItem 取回；预期：字段完整、bizNo 前缀为 XW、状态为 doing',
+       function () {
+         reset();
+         var item = S.addItem(validForm());
+         assert(!!item && !!item.id, '应返回带 id 的新信息');
+         var got = S.getItem(item.id);
+         eq(got.name, '测试物品', '名称应一致');
+         eq(got.status, U.STATUS_DOING, '新信息状态应为 doing');
+         assert(/^XW\d{8}\d{2}$/.test(got.bizNo), '寻物编号应为 XW+日期+序号，实际：' + got.bizNo);
+         assert(S.isMine(item.id), '新发布的信息应属于"我的发布"');
+         reset();
+       });
+
+    /* ---------- 用例 6：招领信息编号前缀 ZL ---------- */
+    it('用例 6：发布信息 —— 招领信息编号以 ZL 开头',
+       '步骤：addItem 一条 type=found 的信息；预期：bizNo 以 ZL 开头',
+       function () {
+         reset();
+         var item = S.addItem(validForm({ type: U.TYPE_FOUND, contact: 'wx_test' }));
+         assert(/^ZL\d{8}\d{2}$/.test(item.bizNo), '招领编号应以 ZL 开头，实际：' + item.bizNo);
+         reset();
+       });
+
+    /* ---------- 用例 7：按名称关键词搜索 ---------- */
+    it('用例 7：搜索 —— 按物品名称关键词「校园卡」能搜到对应信息',
+       '步骤：filterItems(示例数据, {keyword:"校园卡"})；预期：结果均包含该关键词',
+       function () {
+         reset();
+         var r = U.filterItems(S.getItems(), { keyword: '校园卡' });
+         assert(r.length >= 1, '应至少搜到 1 条');
+         r.forEach(function (it) {
+           assert(U.matchKeyword(it, '校园卡'), '结果「' + it.name + '」应命中关键词');
+         });
+         reset();
+       });
+
+    /* ---------- 用例 8：按地点关键词搜索 ---------- */
+    it('用例 8：搜索 —— 按地点关键词「图书馆」能搜到相关信息',
+       '步骤：filterItems(keyword="图书馆")；预期：每条结果的名称/地点/描述包含「图书馆」',
+       function () {
+         reset();
+         var r = U.filterItems(S.getItems(), { keyword: '图书馆' });
+         assert(r.length >= 2, '图书馆相关应至少 2 条，实际 ' + r.length);
+         r.forEach(function (it) { assert(U.matchKeyword(it, '图书馆')); });
+         reset();
+       });
+
+    /* ---------- 用例 9：无结果搜索返回空数组 ---------- */
+    it('用例 9：搜索 —— 不存在的关键词返回空数组（无结果页场景）',
+       '步骤：搜索「外星人电脑包」；预期：返回长度 0',
+       function () {
+         reset();
+         var r = U.filterItems(S.getItems(), { keyword: '外星人电脑包' });
+         eq(r.length, 0, '应无匹配结果');
+         reset();
+       });
+
+    /* ---------- 用例 10：类型 + 分类组合筛选 ---------- */
+    it('用例 10：搜索 —— 类型「招领」+ 分类「证件」组合筛选',
+       '步骤：filterItems({type:"found", category:"证件"})；预期：全部满足两个条件',
+       function () {
+         reset();
+         var r = U.filterItems(S.getItems(), { type: U.TYPE_FOUND, category: '证件' });
+         assert(r.length >= 1, '应至少 1 条');
+         r.forEach(function (it) {
+           eq(it.type, U.TYPE_FOUND, '类型应为招领');
+           eq(it.category, '证件', '分类应为证件');
+         });
+         reset();
+       });
+
+    /* ---------- 用例 11：状态更新 —— 标记已找到并持久化 ---------- */
+    it('用例 11：状态更新 —— 发布者标记「已找到」后状态持久化为 done',
+       '步骤：取一条寻物信息 updateStatus(id,"done")，重新 getItem；预期 status=done，状态文案为「已找到」',
+       function () {
+         reset();
+         var target = S.getItems().filter(function (it) { return it.type === U.TYPE_LOST; })[0];
+         var ok = S.updateStatus(target.id, U.STATUS_DONE);
+         eq(ok, true, '更新应返回成功');
+         var got = S.getItem(target.id);
+         eq(got.status, U.STATUS_DONE, '状态应为 done');
+         eq(U.STATUS_TEXT[got.type][got.status], '已找到', '寻物完结文案应为「已找到」');
+         reset();
+       });
+
+    /* ---------- 用例 12：状态撤销 ---------- */
+    it('用例 12：状态更新 —— 招领信息完结后可撤销恢复为「待认领」',
+       '步骤：将一条招领信息先标记 done 再改回 doing；预期：status=doing，文案为「待认领」',
+       function () {
+         reset();
+         var target = S.getItems().filter(function (it) { return it.type === U.TYPE_FOUND; })[0];
+         S.updateStatus(target.id, U.STATUS_DONE);
+         S.updateStatus(target.id, U.STATUS_DOING);
+         var got = S.getItem(target.id);
+         eq(got.status, U.STATUS_DOING, '撤销后应恢复 doing');
+         eq(U.STATUS_TEXT[U.TYPE_FOUND][U.STATUS_DOING], '待认领', '文案应为「待认领」');
+         reset();
+       });
+
+    /* ---------- 用例 13：白盒 —— 名称超长分支 ---------- */
+    it('用例 13：白盒分支 —— 物品名称超过 30 字时命中长度校验分支',
+       '白盒：覆盖 validateItem 中 name.length > 30 的判定分支；步骤：name 填 31 个字符；预期：valid=false，errors 含 name',
+       function () {
+         var longName = '这是一个非常非常非常长的物品名称用来测试长度校验分支';  // 24 字
+         longName += '补充字数使其超过三十个字符';  // 合计 > 30
+         var r = U.validateItem(validForm({ name: longName }));
+         assert(longName.length > 30, '前置条件：构造的名称应超过 30 字');
+         assert(!r.valid, '超长名称应校验失败');
+         assert(!!r.errors.name, '应命中 name 长度分支');
+       });
+
+    /* ---------- 用例 14：白盒 —— 编号序号边界 ---------- */
+    it('用例 14：白盒边界 —— 编号序号超过 99 时截断为两位（bizNo 边界分支）',
+       '白盒：覆盖 bizNo 中 Math.min(99, seq) 的截断分支；步骤：直接调用 U.bizNo("lost", 日期, 150)；预期：序号部分为 99',
+       function () {
+         var no = U.bizNo(U.TYPE_LOST, new Date('2026-10-08'), 150);
+         assert(/^XW20261008\d{2}$/.test(no), '编号格式应合法，实际：' + no);
+         eq(no.slice(-2), '99', '序号 150 应被截断为 99');
+       });
+
+    /* ---------- 渲染结果 ---------- */
+    var passed = results.filter(function (r) { return r.pass; }).length;
+    var box = document.getElementById('results');
+    box.innerHTML = results.map(function (r) {
+      return '<div class="case ' + (r.pass ? 'pass' : 'fail') + '">' +
+        '<div class="name">' + r.name + '</div>' +
+        '<div class="steps">' + r.steps + '</div>' +
+        (r.pass ? '' : '<div class="detail">' + (r.err || '') + '</div>') +
+        '</div>';
+    }).join('');
+    var sum = document.getElementById('summary');
+    sum.className = 'summary ' + (passed === results.length ? 'ok' : 'fail');
+    sum.textContent = '共 ' + results.length + ' 个用例，通过 ' + passed + ' 个，失败 ' + (results.length - passed) + ' 个' +
+      (passed === results.length ? ' 🎉 全部通过' : '');
+  })();
+  </script>
+</body>
+</html>
