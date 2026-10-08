@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>校园失物招领</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 手机容器：在电脑上居中显示为手机宽度，在手机上铺满屏幕 -->
+  <div class="phone" id="phone">
+
+    <!-- 视图区域（各页面由 JS 渲染到这里） -->
+    <main class="view" id="view"></main>
+
+    <!-- 底部导航：首页 / 搜索 / 发布 / 我的 -->
+    <nav class="tabbar" id="tabbar">
+      <a class="tab" data-route="#/home">
+        <span class="tab-ic ic-home"></span>
+        <span class="tab-tx">首页</span>
+      </a>
+      <a class="tab" data-route="#/search">
+        <span class="tab-ic ic-search"></span>
+        <span class="tab-tx">搜索</span>
+      </a>
+      <a class="tab tab-publish" data-route="#/publish">
+        <span class="tab-plus">+</span>
+        <span class="tab-tx">发布</span>
+      </a>
+      <a class="tab" data-route="#/mine">
+        <span class="tab-ic ic-mine"></span>
+        <span class="tab-tx">我的</span>
+      </a>
+    </nav>
+
+    <!-- 轻提示 -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
